@@ -5,6 +5,7 @@ module Codec.Audio.Opus.Internal.Opus where
 
 import           Foreign
 import           Foreign.C.Types
+import           Foreign.C.String
 
 #include <opus.h>
 
@@ -82,7 +83,7 @@ data EncoderT
 foreign import ccall unsafe "opus.h opus_encoder_create"
     c_opus_encoder_create
       :: SamplingRate -- ^ sampling rate of input signal (Hz) This must be one of 8000, 12000, 16000, 24000, or 48000.
-      -> CInt    -- ^ Number of channels (1 or 2) in input signal
+      -> Int32    -- ^ Number of channels (1 or 2) in input signal
       -> CodingMode -- ^ Coding mode. (See 'app_voip', 'app_audio', 'app_lowdelay')
       -> Ptr ErrorCode -- ^ 'ErrorCode' pointer
       -> IO (Ptr EncoderT)
@@ -91,3 +92,13 @@ foreign import ccall unsafe "opus.h opus_encoder_create"
 foreign import ccall unsafe "opus.h &opus_encoder_destroy"
     cp_opus_encoder_destroy
       :: FunPtr (Ptr EncoderT -> IO ())
+
+
+foreign import ccall unsafe "opus.h opus_encode"
+    c_opus_encode
+      :: Ptr EncoderT  -- ^ encoder state
+      -> Ptr CShort    -- ^ input signal
+      -> Int32         -- ^ frame size
+      -> CString       -- ^ output payload
+      -> Int32         -- ^ max data bytes
+      -> IO Int32      -- ^ number of bytes written or negative in case of error

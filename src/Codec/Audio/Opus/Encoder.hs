@@ -6,7 +6,7 @@ module Codec.Audio.Opus.Encoder
     -- ** create
   , opusEncoderCreate, opusEncoderDestroy
     -- ** run
-  , EncoderAction, runEncoderAction
+  , opusEncode
     -- * re-exports
   , module Codec.Audio.Opus.Types
   ) where
@@ -15,11 +15,53 @@ import           Codec.Audio.Opus.Internal.Opus
 import           Codec.Audio.Opus.Types
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
+import           Data.ByteString                (ByteString)
+import qualified Data.ByteString                as BS
 import           Foreign
 
+
+-- | Encoder State
 newtype Encoder = Encoder (ForeignPtr EncoderT, ForeignPtr ErrorCode)
   deriving (Eq, Ord, Show)
 
+-- | allocates and initializes an encoder state.
+opusEncoderCreate
+  :: (MonadIO m)
+  => SamplingRate  -- ^ sampling rate of input signal
+  -> Bool          -- ^ stereo mode? ('True' => 2 channels, 'False' => 1 channel)
+  -> CodingMode    -- ^ Coding mode. (See 'app_voip', 'app_audio', 'app_lowdelay')
+  -> m Encoder
+opusEncoderCreate sr isStereo cm = liftIO $ do
+  let cs = if isStereo then 2 else 1
+  err <- mallocForeignPtr
+  e <- withForeignPtr err (c_opus_encoder_create sr cs cm)
+  e' <- newForeignPtr cp_opus_encoder_destroy e
+  let enc = Encoder (e', err)
+  opusLastError enc >>= maybe (pure enc) throwM
+
+
+-- | Encode an Opus frame.
+opusEncode
+  :: MonadIO m
+  => Encoder -- ^ 'Encoder' state
+  -> Int     -- ^ frame size
+  -> Int     -- ^ max data bytes
+  -> ByteString -- ^ input signal (interleaved if 2 channels)
+  -> m ByteString
+opusEncode e fs n i = liftIO $
+  BS.useAsCString i $ \i' ->
+    allocaArray n $ \os ->
+      runEncoderAction e $ \e' -> do
+        r <- c_opus_encode e' (castPtr i') (fromInteger . toInteger $ fs) os
+          (fromInteger . toInteger $ n)
+        let ol = (os, fromInteger . toInteger $ r)
+        BS.packCStringLen ol
+
+-- | Frees an 'Encoder'. Is normaly called automaticly
+--   when 'Encoder' gets out of scope
+opusEncoderDestroy :: MonadIO m => Encoder -> m ()
+opusEncoderDestroy (Encoder (e, err)) = liftIO $
+  finalizeForeignPtr e >> finalizeForeignPtr err
 
 
 -- | get last error from encoder
@@ -42,26 +84,3 @@ withEncoder' e@(Encoder (fp_a, _)) m = liftIO $
 runEncoderAction :: (MonadIO m, MonadThrow m) =>
   Encoder -> EncoderAction a -> m a
 runEncoderAction e m = withEncoder' e m >>= either throwM pure
-
-
--- | allocates and initializes an encoder state.
-opusEncoderCreate
-  :: (MonadIO m)
-  => SamplingRate  -- ^ sampling rate of input signal
-  -> Bool          -- ^ stereo mode? ('True' => 2 channels, 'False' => 1 channel)
-  -> CodingMode    -- ^ Coding mode. (See 'app_voip', 'app_audio', 'app_lowdelay')
-  -> m Encoder
-opusEncoderCreate sr isStereo cm = liftIO $ do
-  let cs = if isStereo then 2 else 1
-  err <- mallocForeignPtr
-  e <- withForeignPtr err (c_opus_encoder_create sr cs cm)
-  e' <- newForeignPtr cp_opus_encoder_destroy e
-  let enc = Encoder (e', err)
-  opusLastError enc >>= maybe (pure enc) throwM
-
-
--- | Frees an 'Encoder'. Is normaly called automaticly
---   when 'Encoder' gets out of scope
-opusEncoderDestroy :: MonadIO m => Encoder -> m ()
-opusEncoderDestroy (Encoder (e, err)) = liftIO $
-  finalizeForeignPtr e >> finalizeForeignPtr err
