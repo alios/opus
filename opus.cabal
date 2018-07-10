@@ -1,7 +1,7 @@
 name:                opus
 version:             0.1.0.0
--- synopsis:
--- description:
+synopsis:            opus audio codec
+description:         haskell ffi binding to reference implementation of opus audio codec
 homepage:            https://github.com/alios/opus#readme
 license:             BSD3
 license-file:        LICENSE
