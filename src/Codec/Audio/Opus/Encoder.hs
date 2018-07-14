@@ -2,9 +2,9 @@
 
 module Codec.Audio.Opus.Encoder
   ( -- * Encoder
-    Encoder, OpusException(..), FrameSize
+    Encoder, OpusException(..)
     -- ** create
-  , opusEncoderCreate, opusEncoderDestroy
+  , withOpusEncoder, opusEncoderCreate, opusEncoderDestroy
     -- ** run
   , opusEncode, opusEncodeLazy
     -- * re-exports
@@ -13,45 +13,46 @@ module Codec.Audio.Opus.Encoder
 
 import           Codec.Audio.Opus.Internal.Opus
 import           Codec.Audio.Opus.Types
+import           Control.Lens.Fold
+import           Control.Lens.Operators
 import           Control.Monad.Catch
 import           Control.Monad.IO.Class
+import           Control.Monad.Trans.Resource
 import           Data.ByteString                (ByteString)
 import qualified Data.ByteString                as BS
 import qualified Data.ByteString.Lazy           as BL
 import           Foreign
-
 
 -- | Encoder State
 newtype Encoder = Encoder (ForeignPtr EncoderT, ForeignPtr ErrorCode)
   deriving (Eq, Ord, Show)
 
 -- | allocates and initializes an encoder state.
-opusEncoderCreate
-  :: (MonadIO m)
-  => SamplingRate  -- ^ sampling rate of input signal
-  -> Bool          -- ^ stereo mode? ('True' => 2 channels, 'False' => 1 channel)
-  -> CodingMode    -- ^ Coding mode. (See 'app_voip', 'app_audio', 'app_lowdelay')
-  -> m Encoder
-opusEncoderCreate sr isStereo cm = liftIO $ do
+opusEncoderCreate :: (HasEncoderConfig cfg, MonadIO m) => cfg -> m Encoder
+opusEncoderCreate cfg = liftIO $ do
   let cs = if isStereo then 2 else 1
+      sr = cfg ^. (encoderConfig . samplingRate)
+      isStereo = cfg ^. encoderIsStereo
+      cm = cfg ^. (encoderConfig . codingMode)
   err <- mallocForeignPtr
   e <- withForeignPtr err (c_opus_encoder_create sr cs cm)
   e' <- newForeignPtr cp_opus_encoder_destroy e
   let enc = Encoder (e', err)
   opusLastError enc >>= maybe (pure enc) throwM
 
-type FrameSize = Int
 
 
 -- | Encode an Opus frame.
 opusEncode
-  :: MonadIO m
+  :: (HasStreamConfig cfg, MonadIO m)
   => Encoder -- ^ 'Encoder' state
-  -> FrameSize     -- ^ frame size
-  -> Int     -- ^ max data bytes
+  -> cfg     -- ^ max data bytes
   -> ByteString -- ^ input signal (interleaved if 2 channels)
   -> m ByteString
-opusEncode e fs n i = liftIO $
+opusEncode e cfg i =
+  let fs = cfg ^. streamFrameSize
+      n = cfg ^. streamOutSize
+  in liftIO $
   BS.useAsCString i $ \i' ->
     allocaArray n $ \os ->
       runEncoderAction e $ \e' -> do
@@ -62,9 +63,20 @@ opusEncode e fs n i = liftIO $
         if l < 0 then throwM OpusInvalidPacket else
           BS.packCStringLen ol
 
-opusEncodeLazy :: MonadIO f =>
-  Encoder -> FrameSize -> Int -> ByteString -> f BL.ByteString
-opusEncodeLazy e fs n = fmap BL.fromStrict . opusEncode e fs n
+
+opusEncodeLazy :: (HasStreamConfig cfg, MonadIO m)
+  => Encoder -- ^ 'Encoder' state
+  -> cfg
+  -> ByteString -- ^ input signal (interleaved if 2 channels)
+  -> m BL.ByteString
+opusEncodeLazy e cfg = fmap BL.fromStrict . opusEncode e cfg
+
+withOpusEncoder :: (HasEncoderConfig cfg) => MonadResource m
+  => cfg
+  -> (Encoder -> IO ())
+  -> m Encoder
+withOpusEncoder cfg a =
+  snd <$> allocate (opusEncoderCreate cfg) a
 
 
 -- | Frees an 'Encoder'. Is normaly called automaticly
@@ -77,7 +89,7 @@ opusEncoderDestroy (Encoder (e, err)) = liftIO $
 -- | get last error from encoder
 opusLastError :: MonadIO m => Encoder -> m (Maybe OpusException)
 opusLastError (Encoder (_, fp)) =
-  liftIO $ errorCodeException <$> withForeignPtr fp peek
+  liftIO $ preview _ErrorCodeException <$> withForeignPtr fp peek
 
 type EncoderAction  a = Ptr EncoderT -> IO a
 

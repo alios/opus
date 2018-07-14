@@ -28,8 +28,10 @@ library
   ghc-options:         -Wall
   build-depends:       base >= 4.7 && < 5,
                        exceptions,
+                       resourcet,
                        bytestring,
                        conduit,
+                       lens,
                        hspec
 
 source-repository head
@@ -51,4 +53,5 @@ test-suite hs-mumble-test
                        hspec,
                        http-client-tls,
                        zlib,
+                       lens,
                        tar

@@ -1,22 +1,42 @@
 module Main(main) where
 
 import           Codec.Audio.Opus.Encoder
+import           Control.Lens.Operators
+-- import qualified Data.ByteString          as BS
 import           Test.Hspec
 
 
-srs = [opusSR48k, opusSR24k, opusSR16k, opusSR12k, opusSR8k ]
-ss = [True, False]
-cs = [app_voip, app_audio, app_lowdelay]
+cfgs :: [EncoderConfig]
+cfgs = [_EncoderConfig # (sr, s, c) | sr <- srs, s <- ss, c <- cs]
+  where
+    srs = [opusSR48k, opusSR24k, opusSR16k, opusSR12k, opusSR8k ]
+    ss = [True, False]
+    cs = [app_voip, app_audio, app_lowdelay]
 
-testEncoder sr s a =
-  let n = mconcat
-        [ "create valid ", show sr, " "
-        , if s then "stereo" else "mono", " "
-        , show a, " encoder"]
+seqWithCfgs :: Monad m => (EncoderConfig -> m a) -> m ()
+seqWithCfgs a = sequence_ (a <$> cfgs)
+
+testEncoderCreate :: HasEncoderConfig cfg => cfg -> SpecWith ()
+testEncoderCreate cfg =
+  let n = mconcat [ "create valid ", show $ cfg ^. encoderConfig, " encoder"]
   in it n $
-     opusEncoderCreate sr s a >>= (`shouldSatisfy` (const True))
+     opusEncoderCreate cfg >>= (`shouldSatisfy` const True)
+
+
 
 main :: IO ()
 main = hspec $ do
-  describe "opusEncoderCreate" $ do
-    sequence_ $ testEncoder <$> srs <*> ss <*> cs
+  describe "opusEncoderCreate" $
+    seqWithCfgs testEncoderCreate
+
+
+{-
+
+-}
+{-
+  let testEncoderEncodeWith = testEncoderEncode <$> srs <*> ss <*> cs
+  describe "opusEncode" $ do
+r <-
+      sequence_ $ testEncoderEncodeWith <*> pure "empty input" <*> pure mempty >>= (`shouldSatisfy` const True)
+    return ()
+-}
