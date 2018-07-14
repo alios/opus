@@ -2,11 +2,11 @@
 
 module Codec.Audio.Opus.Encoder
   ( -- * Encoder
-    Encoder, OpusException(..)
+    Encoder, OpusException(..), FrameSize
     -- ** create
   , opusEncoderCreate, opusEncoderDestroy
     -- ** run
-  , opusEncode
+  , opusEncode, opusEncodeLazy
     -- * re-exports
   , module Codec.Audio.Opus.Types
   ) where
@@ -17,6 +17,7 @@ import           Control.Monad.Catch
 import           Control.Monad.IO.Class
 import           Data.ByteString                (ByteString)
 import qualified Data.ByteString                as BS
+import qualified Data.ByteString.Lazy           as BL
 import           Foreign
 
 
@@ -39,12 +40,14 @@ opusEncoderCreate sr isStereo cm = liftIO $ do
   let enc = Encoder (e', err)
   opusLastError enc >>= maybe (pure enc) throwM
 
+type FrameSize = Int
+
 
 -- | Encode an Opus frame.
 opusEncode
   :: MonadIO m
   => Encoder -- ^ 'Encoder' state
-  -> Int     -- ^ frame size
+  -> FrameSize     -- ^ frame size
   -> Int     -- ^ max data bytes
   -> ByteString -- ^ input signal (interleaved if 2 channels)
   -> m ByteString
@@ -54,8 +57,15 @@ opusEncode e fs n i = liftIO $
       runEncoderAction e $ \e' -> do
         r <- c_opus_encode e' (castPtr i') (fromInteger . toInteger $ fs) os
           (fromInteger . toInteger $ n)
-        let ol = (os, fromInteger . toInteger $ r)
-        BS.packCStringLen ol
+        let l = fromInteger . toInteger $ r
+            ol = (os, l)
+        if l < 0 then throwM OpusInvalidPacket else
+          BS.packCStringLen ol
+
+opusEncodeLazy :: MonadIO f =>
+  Encoder -> FrameSize -> Int -> ByteString -> f BL.ByteString
+opusEncodeLazy e fs n = fmap BL.fromStrict . opusEncode e fs n
+
 
 -- | Frees an 'Encoder'. Is normaly called automaticly
 --   when 'Encoder' gets out of scope
