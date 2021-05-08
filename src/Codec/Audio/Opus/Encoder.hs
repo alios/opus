@@ -63,7 +63,6 @@ opusEncode e cfg i =
         if l < 0 then throwM OpusInvalidPacket else
           BS.packCStringLen ol
 
-
 opusEncodeLazy :: (HasStreamConfig cfg, MonadIO m)
   => Encoder -- ^ 'Encoder' state
   -> cfg
