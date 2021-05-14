@@ -54,7 +54,7 @@ opusDecode d cfg i =
       fec = cfg ^. deStreamDecodeFec
       conf = cfg ^. deStreamDecoderConfig
       chans = if conf ^. decoderIsStereo then 2 else 1
-      pcm_length = fs * chans-- * sizeOf(undefined :: CShort)
+      pcm_length = fs * chans * sizeOf(undefined :: CShort)
   in liftIO $
   BS.useAsCStringLen i $ \(i', ilen) ->
     allocaArray pcm_length $ \os ->
