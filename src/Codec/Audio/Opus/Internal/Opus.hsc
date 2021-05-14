@@ -120,7 +120,7 @@ foreign import ccall unsafe "opus.h &opus_decoder_destroy"
 foreign import ccall unsafe "opus.h opus_decode"
     c_opus_decode
       :: Ptr DecoderT -- ^ Decoder state
-      -> CString      -- ^ Byte array of compressed data
+      -> Ptr CChar    -- ^ Byte array of compressed data
       -> Int32        -- ^ Exact number of bytes in the payload
       -> Ptr CShort   -- ^ decoded audio data
       -> Int32        -- ^ max duration of the frame in samples that can fit

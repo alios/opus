@@ -59,17 +59,18 @@ opusDecode d cfg i =
   BS.useAsCStringLen i $ \(i', ilen) ->
     allocaArray pcm_length $ \os ->
       runDecoderAction d $ \d' -> do
-        r <- c_opus_decode d' (castPtr i') (fromIntegral ilen) os
+        r <- c_opus_decode d' i' (fromIntegral ilen) os
           (fromIntegral fs) (fromIntegral fec)
         let l = fromIntegral r
         if l < 0 then do
-          let mbException = preview _ErrorCodeException $ ErrorCode l
+          let mbException = ErrorCode l ^? _ErrorCodeException 
           case mbException of
               Nothing -> throwM OpusInvalidPacket
               Just x  -> throwM x
-        else do
-          BS.packCStringLen $ (castPtr os, fromIntegral l)
-
+        else
+          -- multiply length by two because "os" is CShort i.e. Int16
+          -- but CStringLen expects a CChar which is Int8
+          BS.packCStringLen $ (castPtr os, (fromIntegral l) * 2)
 
 opusDecodeLazy :: (HasDecoderStreamConfig cfg, MonadIO m)
   => Decoder -- ^ 'Decoder' state
