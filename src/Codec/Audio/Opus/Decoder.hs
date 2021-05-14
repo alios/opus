@@ -22,7 +22,9 @@ import           Data.ByteString                (ByteString)
 import qualified Data.ByteString                as BS
 import qualified Data.ByteString.Lazy           as BL
 import           Foreign
-import           Foreign.C.Types                (CShort)
+import           Foreign.C.Types                (CShort
+                                                ,CChar
+                                                )
 
 -- | Decoder State
 newtype Decoder = Decoder (ForeignPtr DecoderT, ForeignPtr ErrorCode)
@@ -54,7 +56,7 @@ opusDecode d cfg i =
       fec = cfg ^. deStreamDecodeFec
       conf = cfg ^. deStreamDecoderConfig
       chans = if conf ^. decoderIsStereo then 2 else 1
-      pcm_length = fs * chans * sizeOf(undefined :: CShort)
+      pcm_length = fs * chans
   in liftIO $
   BS.useAsCStringLen i $ \(i', ilen) ->
     allocaArray pcm_length $ \os ->
@@ -67,10 +69,11 @@ opusDecode d cfg i =
           case mbException of
               Nothing -> throwM OpusInvalidPacket
               Just x  -> throwM x
-        else
+        else do
           -- multiply length by two because "os" is CShort i.e. Int16
           -- but CStringLen expects a CChar which is Int8
-          BS.packCStringLen $ (castPtr os, (fromIntegral l) * 2)
+          let multiple = sizeOf (undefined :: CShort) `div` sizeOf (undefined :: CChar)
+          BS.packCStringLen $ (castPtr os, (fromIntegral l) * multiple)
 
 opusDecodeLazy :: (HasDecoderStreamConfig cfg, MonadIO m)
   => Decoder -- ^ 'Decoder' state
