@@ -53,15 +53,11 @@ opusEncode e cfg i =
   let fs = cfg ^. streamFrameSize
       n = cfg ^. streamOutSize
   in liftIO $
-  BS.useAsCStringLen i $ \(i',_) -> do
-    print $ "cstring made from bs"
-    allocaArray n $ \os -> do
-      print $ "allocated array of size " <> (show n)
+  BS.useAsCString i $ \i' ->
+    allocaArray n $ \os ->
       runEncoderAction e $ \e' -> do
-        print "encoder is in hand"
         r <- c_opus_encode e' (castPtr i') (fromInteger . toInteger $ fs) os
           (fromInteger . toInteger $ n)
-        print "encoded"
         let l = fromInteger . toInteger $ r
             ol = (os, l)
         if l < 0 then throwM OpusInvalidPacket else
