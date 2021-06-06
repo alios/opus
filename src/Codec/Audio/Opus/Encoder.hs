@@ -21,6 +21,7 @@ import           Control.Monad.Trans.Resource
 import           Data.ByteString                (ByteString)
 import qualified Data.ByteString                as BS
 import qualified Data.ByteString.Lazy           as BL
+import           Foreign.C.Types                (CShort)
 import           Foreign
 
 -- | Encoder State
@@ -54,7 +55,7 @@ opusEncode e cfg i =
       n = cfg ^. streamOutSize
   in liftIO $
   BS.useAsCString i $ \i' -> do
-    print "cstring made"
+    print $ "cstring made from bs of length" <> (show $ BS.length i) <> " this should be equal to " <> (show $ fs * 2 * sizeOf (undefined :: CShort))
     allocaArray n $ \os -> do
       print $ "allocated array of size " <> (show n)
       runEncoderAction e $ \e' -> do
