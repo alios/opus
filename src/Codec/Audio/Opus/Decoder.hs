@@ -70,9 +70,10 @@ opusDecode d cfg i =
               Nothing -> throwM OpusInvalidPacket
               Just x  -> throwM x
         else do
-          -- multiply length by two because "os" is CShort i.e. Int16
+          -- multiply length because "os" is CShort i.e. Int16
           -- but CStringLen expects a CChar which is Int8
-          let multiple = sizeOf (undefined :: CShort) `div` sizeOf (undefined :: CChar)
+          let multiple = sizeOf (undefined :: CShort) `div`
+                  sizeOf (undefined :: CChar)
           BS.packCStringLen $ (castPtr os, (fromIntegral l) * multiple)
 
 opusDecodeLazy :: (HasDecoderStreamConfig cfg, MonadIO m)
