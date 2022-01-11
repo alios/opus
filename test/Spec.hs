@@ -57,9 +57,11 @@ decodeFile decoder bytes = do
     maxPacket = 1500
     maxFrameSize = 48000 * 2
 
+    -- | A simplified port of the official opus_demo.c file's decoding loop
     loop bytes
       | B.length bytes < 8 = pure mempty
       | otherwise = do
+        -- lines 649 to 672 in opus_demo.c
         let inputLen = charToInt $ B.unpack $ B.take 4 bytes
         guard $ inputLen <= maxPacket && inputLen >= 0 -- invalid payload length
 
@@ -69,9 +71,10 @@ decodeFile decoder bytes = do
 
         guard $ inputLen /= 0 -- lost packets are not supported for now in this test
 
-        -- assumptions: no lost packets. no inband fec.
+        -- line 783
         let outputSamples = maxFrameSize
         decoded <- opusDecode decoder (_DecoderStreamConfig # (decoderCfg, outputSamples, 0)) inputData
+        -- recursively continue with the rest
         (decoded <>) <$> loop remaining
 
 main :: IO ()
@@ -79,6 +82,9 @@ main = hspec $ do
   describe "opusEncoderCreate" $
     seqWithCfgs testEncoderCreate
   around_ onlyIfOpusCompareExists $ do
+    -- These tests require the opus_compare executable to be present in the
+    -- project root, and the opus test vectors, downloaded from the official
+    -- opus website.
     describe "opus mono test vectors" $ do
       forM_ ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"] $ \file -> do
         it ("Testing testvector " <> file) $ do
