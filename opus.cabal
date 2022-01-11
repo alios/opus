@@ -21,6 +21,7 @@ library
   exposed-modules:     Codec.Audio.Opus.Encoder,
                        Codec.Audio.Opus.Encoder.Conduit,
                        Codec.Audio.Opus.Decoder,
+                       Codec.Audio.Opus.Decoder.Conduit,
                        Codec.Audio.Opus.Types,
                        Codec.Audio.Opus.Internal.Opus
   default-language:    Haskell2010
