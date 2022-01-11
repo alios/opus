@@ -55,4 +55,5 @@ test-suite hs-mumble-test
                        http-client-tls,
                        zlib,
                        lens,
-                       tar
+                       tar,
+                       process
