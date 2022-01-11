@@ -69,7 +69,7 @@ opusDecode d cfg i =
         else do
           -- multiply by 2 because "os" is CShort i.e. Int16
           -- but CStringLen expects a CChar which is Int8
-          BS.packCStringLen $ (castPtr os, (fromIntegral l) * 2)
+          BS.packCStringLen $ (castPtr os, (fromIntegral l) * 2 * chans)
 
 opusDecodeLazy :: (HasDecoderStreamConfig cfg, MonadIO m)
   => Decoder -- ^ 'Decoder' state
