@@ -77,6 +77,7 @@ instance Show SamplingRate where
   show (SamplingRate r) = mconcat [show $ r `div` 1000, "kHz"]
 
 data EncoderT
+data DecoderT
 
 
 -- | allocates and initializes an encoder state.
@@ -102,3 +103,27 @@ foreign import ccall unsafe "opus.h opus_encode"
       -> CString       -- ^ output payload
       -> Int32         -- ^ max data bytes
       -> IO Int32      -- ^ number of bytes written or negative in case of error
+
+-- | allocates and initializes a decoder state.
+foreign import ccall unsafe "opus.h opus_decoder_create"
+    c_opus_decoder_create
+      :: SamplingRate -- ^ sampling rate, same as encoder_create
+      -> Int32 -- ^ Number of channels in input signal
+      -> Ptr ErrorCode -- ^ 'ErrorCode' pointer
+      -> IO (Ptr DecoderT)
+
+-- | Frees a 'DecoderT'
+foreign import ccall unsafe "opus.h &opus_decoder_destroy"
+    cp_opus_decoder_destroy
+      :: FunPtr (Ptr DecoderT -> IO ())
+
+foreign import ccall unsafe "opus.h opus_decode"
+    c_opus_decode
+      :: Ptr DecoderT -- ^ Decoder state
+      -> Ptr CChar    -- ^ Byte array of compressed data
+      -> Int32        -- ^ Exact number of bytes in the payload
+      -> Ptr CShort   -- ^ decoded audio data
+      -> Int32        -- ^ max duration of the frame in samples that can fit
+      -> CInt         -- ^ flag to request that any in-band forward error correction data be decoded. If no such data is available, the frame is decoded as if it were lost.
+      -> IO Int32     -- ^ Number of decoded samples, or negative in case of error
+

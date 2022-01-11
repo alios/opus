@@ -11,8 +11,12 @@ module Codec.Audio.Opus.Types
    -- * EncoderConfig
  , FrameSize
  , EncoderConfig, HasEncoderConfig(..), _EncoderConfig
+   -- * DecoderConfig
+ , DecoderConfig, HasDecoderConfig(..), _DecoderConfig
    -- * StreamConfig
  , StreamConfig, HasStreamConfig(..), _StreamConfig
+   -- * DecoderStreamConfig
+ , DecoderStreamConfig, HasDecoderStreamConfig(..), _DecoderStreamConfig
  ) where
 
 import           Codec.Audio.Opus.Internal.Opus
@@ -79,6 +83,17 @@ instance HasSamplingRate EncoderConfig where
 instance HasCodingMode EncoderConfig where
   codingMode = encoderCodingMode
 
+data DecoderConfig = DecoderConfig
+  { _decoderSamplingRate :: SamplingRate
+  , _decoderIsStereo     :: Bool
+  } deriving (Eq, Show)
+
+makeClassy 'DecoderConfig
+makePrisms 'DecoderConfig
+
+instance HasSamplingRate DecoderConfig where
+  samplingRate = decoderSamplingRate
+
 type FrameSize = Int
 
 
@@ -99,3 +114,19 @@ instance HasSamplingRate StreamConfig where
 
 instance HasCodingMode StreamConfig where
   codingMode = encoderConfig . codingMode
+
+data DecoderStreamConfig = DecoderStreamConfig
+  { _deStreamDecoderConfig :: DecoderConfig
+  , _deStreamFrameSize     :: FrameSize
+  , _deStreamDecodeFec     :: Int
+  } deriving (Eq, Show)
+
+makeClassy ''DecoderStreamConfig
+makePrisms ''DecoderStreamConfig
+
+instance HasDecoderConfig DecoderStreamConfig where
+    decoderConfig = deStreamDecoderConfig
+
+instance HasSamplingRate DecoderStreamConfig where
+    samplingRate = decoderConfig . samplingRate
+

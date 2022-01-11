@@ -1,8 +1,16 @@
 module Main(main) where
 
 import           Codec.Audio.Opus.Encoder
+import           Codec.Audio.Opus.Decoder
 import           Control.Lens.Operators
--- import qualified Data.ByteString          as BS
+import           Control.Exception
+import           Control.Monad (guard, forM_)
+import qualified Data.ByteString          as B
+import           Data.Bits
+import           Data.List
+import           Data.Word (Word8)
+import           System.Exit
+import           System.Process
 import           Test.Hspec
 
 
@@ -23,11 +31,96 @@ testEncoderCreate cfg =
      opusEncoderCreate cfg >>= (`shouldSatisfy` const True)
 
 
+onlyIfOpusCompareExists :: IO () -> IO ()
+onlyIfOpusCompareExists action = do
+  result <- try $ readProcessWithExitCode "./opus_compare" [] ""
+  case (result :: Either IOException (ExitCode, String, String)) of
+    Right (ExitFailure 1, _, _) -> action
+    _ -> fail "opus_compare executable not found"
+
+decodeFile :: DecoderConfig -> B.ByteString -> IO B.ByteString
+decodeFile decoderCfg bytes = do
+  decoder <- opusDecoderCreate decoderCfg
+  loop decoder bytes
+  where
+
+    -- | Convert four unsigned bytes to a 32-bit integer. fromIntegral is
+    -- applied to each byte before shifting to not lose any bits.
+    charToInt :: [Word8] -> Int
+    charToInt (b1:b2:b3:b4:[]) = (fromIntegral b1) `shiftL` 24 .|. (fromIntegral b2) `shiftL` 16 .|. (fromIntegral b3) `shiftL` 8 .|. (fromIntegral b4)
+    charToInt _ = error "wrong length to convert to int"
+
+    maxPacket, maxFrameSize :: Int
+    maxPacket = 1500
+    maxFrameSize = 48000 * 2
+
+    -- | A simplified port of the official opus_demo.c file's decoding loop
+    loop decoder bytes
+      | B.length bytes < 8 = pure mempty
+      | otherwise = do
+        -- lines 649 to 672 in opus_demo.c
+        let inputLen = charToInt $ B.unpack $ B.take 4 bytes
+        guard $ inputLen <= maxPacket && inputLen >= 0 -- invalid payload length
+
+        let inputEncFinalRange = charToInt $ B.unpack $ B.take 4 $ B.drop 4 bytes
+        let (inputData, remaining) = B.splitAt inputLen $ B.drop 8 bytes
+        guard $ inputLen == B.length inputData -- ran out of input, expecting inputLen but got B.length bytes
+
+        guard $ inputLen /= 0 -- lost packets are not supported for now in this test
+
+        -- line 783
+        let outputSamples = maxFrameSize
+        decoded <- opusDecode decoder (_DecoderStreamConfig # (decoderCfg, outputSamples, 0)) inputData
+        -- recursively continue with the rest
+        (decoded <>) <$> loop decoder remaining
 
 main :: IO ()
 main = hspec $ do
   describe "opusEncoderCreate" $
     seqWithCfgs testEncoderCreate
+  around_ onlyIfOpusCompareExists $ do
+    -- These tests require the opus_compare executable to be present in the
+    -- project root, and the opus test vectors, downloaded from the official
+    -- opus website.
+    describe "opus mono test vectors" $
+      forM_ ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"] $ \file -> do
+        it ("mono testvector " <> file) $ do
+          let decoderCfg = _DecoderConfig # (opusSR48k, False)
+          B.readFile ("opus_newvectors/testvector" <> file <> ".bit") >>= decodeFile decoderCfg >>= B.writeFile "tmp.out"
+          -- Use readProcessWithExitCode to account for the fact that opus_compare
+          -- returns a non-zero exit code if the comparing fails.
+          (exitcode1, stdout1, error1) <- readProcessWithExitCode "./opus_compare"
+            ["-r", "48000"
+            , "opus_newvectors/testvector" <> file <> ".dec"
+            , "tmp.out"
+            ] ""
+          (exitcode2, stdout2, error2) <- readProcessWithExitCode "./opus_compare"
+            ["-r", "48000"
+            , "opus_newvectors/testvector" <> file <> "m.dec"
+            , "tmp.out"
+            ] ""
+          shouldSatisfy (error1, error2) $ \(a, b) -> "PASSES" `isInfixOf` a || "PASSES" `isInfixOf` b
+
+    describe "opus stereo test vectors" $
+      forM_ ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"] $ \file -> do
+        it ("stereo testvector " <> file) $ do
+          let decoderCfg = _DecoderConfig # (opusSR48k, True)
+          B.readFile ("opus_newvectors/testvector" <> file <> ".bit") >>= decodeFile decoderCfg >>= B.writeFile "tmp.out"
+          -- Use readProcessWithExitCode to account for the fact that opus_compare
+          -- returns a non-zero exit code if the comparing fails.
+          (exitcode1, stdout1, error1) <- readProcessWithExitCode "./opus_compare"
+            [ "-s"
+            , "-r", "48000"
+            , "opus_newvectors/testvector" <> file <> ".dec"
+            , "tmp.out"
+            ] ""
+          (exitcode2, stdout2, error2) <- readProcessWithExitCode "./opus_compare"
+            [ "-s"
+            , "-r", "48000"
+            , "opus_newvectors/testvector" <> file <> "m.dec"
+            , "tmp.out"
+            ] ""
+          shouldSatisfy (error1, error2) $ \(a, b) -> "PASSES" `isInfixOf` a || "PASSES" `isInfixOf` b
 
 
 {-
